@@ -77,10 +77,11 @@ resolve_host_path() {
 }
 
 prepare_docker_volume_dirs() {
-  local volume_root collabmd_local_dir collabmd_rclone_dir collabmd_rclone_config_dir collabmd_rclone_cache_dir collabmd_git_dir collabmd_git_secrets_dir
+  local volume_root collabmd_local_dir collabmd_rclone_dir collabmd_rclone_runner_dir collabmd_rclone_config_dir collabmd_rclone_cache_dir collabmd_git_dir collabmd_git_secrets_dir
   volume_root="$(resolve_host_path "${DOCKER_VOLUMES_ROOT:-./.docker-volumes}")"
   collabmd_local_dir="$(resolve_host_path "${COLLABMD_LOCAL_HOST_DIR:-$volume_root/collabmd/local/vault}")"
   collabmd_rclone_dir="$(resolve_host_path "${COLLABMD_RCLONE_HOST_DIR:-$volume_root/collabmd/rclone/vault}")"
+  collabmd_rclone_runner_dir="$(resolve_host_path "${COLLABMD_RCLONE_RUNNER_HOST_DIR:-$volume_root/collabmd/rclone-runner/vault}")"
   collabmd_rclone_config_dir="$(resolve_host_path "${COLLABMD_RCLONE_CONFIG_DIR:-$volume_root/collabmd/rclone/config}")"
   collabmd_rclone_cache_dir="$(resolve_host_path "${COLLABMD_RCLONE_CACHE_DIR:-$volume_root/collabmd/rclone/cache}")"
   collabmd_git_dir="$(resolve_host_path "${COLLABMD_GIT_HOST_DIR:-$volume_root/collabmd/git/vault}")"
@@ -97,6 +98,7 @@ prepare_docker_volume_dirs() {
     "$volume_root/deploy-code/tmp" \
     "$collabmd_local_dir" \
     "$collabmd_rclone_dir" \
+    "$collabmd_rclone_runner_dir" \
     "$collabmd_rclone_config_dir" \
     "$collabmd_rclone_cache_dir" \
     "$collabmd_git_dir" \
@@ -104,7 +106,7 @@ prepare_docker_volume_dirs() {
 
   if [ "${DC_VERBOSE:-0}" = "1" ]; then
     echo "  DATA_ROOT : $volume_root"
-    echo "  COLLABMD  : local=$collabmd_local_dir rclone=$collabmd_rclone_dir git=$collabmd_git_dir"
+    echo "  COLLABMD  : local=$collabmd_local_dir rclone=$collabmd_rclone_dir rclone-runner=$collabmd_rclone_runner_dir git=$collabmd_git_dir"
   fi
 }
 
@@ -204,6 +206,10 @@ fi
 
 if [ "${COLLABMD_RCLONE_ENABLED:-false}" = "true" ]; then
   PROFILE_ARGS+=(--profile collabmd-rclone)
+fi
+
+if [ "${COLLABMD_RCLONE_RUNNER_ENABLED:-false}" = "true" ]; then
+  PROFILE_ARGS+=(--profile collabmd-rclone-runner)
 fi
 
 if [ "${COLLABMD_GIT_DEPLOY_ENABLED:-false}" = "true" ]; then

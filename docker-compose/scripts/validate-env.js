@@ -327,6 +327,15 @@ const collabmdModes = [
   },
   {
     defaultEnabled: false,
+    defaultHostPort: "1237",
+    flag: "COLLABMD_RCLONE_RUNNER_ENABLED",
+    hostDir: "COLLABMD_RCLONE_RUNNER_HOST_DIR",
+    hostPort: "COLLABMD_RCLONE_RUNNER_HOST_PORT",
+    modeName: "CollabMD rclone runner-safe",
+    prefix: "COLLABMD_RCLONE_RUNNER",
+  },
+  {
+    defaultEnabled: false,
     defaultHostPort: "1236",
     flag: "COLLABMD_GIT_DEPLOY_ENABLED",
     hostDir: "COLLABMD_GIT_HOST_DIR",
@@ -371,8 +380,8 @@ if (env.COLLABMD_PORT && env.APP_PORT && env.COLLABMD_PORT !== env.APP_PORT) {
   warnings.push(`COLLABMD_PORT=${env.COLLABMD_PORT} differs from APP_PORT=${env.APP_PORT}; compose uses APP_PORT inside containers.`);
 }
 
-if (boolValue("COLLABMD_RCLONE_ENABLED", false)) {
-  checkRequired("COLLABMD_RCLONE_REMOTE", "rclone remote:path to mount for CollabMD rclone mode");
+if (boolValue("COLLABMD_RCLONE_ENABLED", false) || boolValue("COLLABMD_RCLONE_RUNNER_ENABLED", false)) {
+  checkRequired("COLLABMD_RCLONE_REMOTE", "rclone remote:path for CollabMD rclone modes");
   checkOptional("COLLABMD_RCLONE_CONFIG_DIR", "directory containing rclone.conf");
   checkOptional("COLLABMD_RCLONE_CONFIG_B64", "base64-encoded rclone.conf");
   checkOptional("COLLABMD_RCLONE_VFS_CACHE_MODE", "rclone vfs cache mode");
@@ -382,11 +391,27 @@ if (boolValue("COLLABMD_RCLONE_ENABLED", false)) {
     const configDir = resolveHostPath(env.COLLABMD_RCLONE_CONFIG_DIR || `${env.DOCKER_VOLUMES_ROOT || "./.docker-volumes"}/collabmd/rclone/config`);
     const configFile = path.join(configDir, "rclone.conf");
     if (!fs.existsSync(configFile)) {
-      errors.push("COLLABMD_RCLONE_ENABLED=true requires COLLABMD_RCLONE_CONFIG_B64 or rclone.conf in COLLABMD_RCLONE_CONFIG_DIR");
+      errors.push("CollabMD rclone modes require COLLABMD_RCLONE_CONFIG_B64 or rclone.conf in COLLABMD_RCLONE_CONFIG_DIR");
     } else {
       ok.push("rclone.conf present for CollabMD rclone mode");
     }
   }
+}
+
+if (boolValue("COLLABMD_RCLONE_RUNNER_ENABLED", false)) {
+  checkOptional("COLLABMD_RCLONE_RUNNER_SYNC_INTERVAL_SEC", "runner-safe rclone upload interval seconds", (v) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 5 ? null : "must be integer >= 5";
+  });
+  checkOptional("COLLABMD_RCLONE_RUNNER_PULL_INTERVAL_SEC", "runner-safe rclone remote pull interval seconds", (v) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 30 ? null : "must be integer >= 30";
+  });
+  checkOptional("COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC", "app restart interval seconds; 3000 = 50 minutes", (v) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 60 ? null : "must be integer >= 60";
+  });
+  checkOptional("COLLABMD_RCLONE_RUNNER_SYNC_EXTRA_ARGS", "extra rclone copy/sync args for runner-safe mode");
 }
 
 if (boolValue("COLLABMD_GIT_DEPLOY_ENABLED", false)) {
@@ -439,7 +464,7 @@ if (boolValue("COLLABMD_GIT_DEPLOY_ENABLED", false)) {
 }
 
 // 3) Flags
-for (const key of ["ENABLE_DOZZLE", "ENABLE_FILEBROWSER", "ENABLE_WEBSSH", "ENABLE_TAILSCALE", "COLLABMD_LOCAL_ENABLED", "COLLABMD_RCLONE_ENABLED", "COLLABMD_GIT_DEPLOY_ENABLED", "COLLABMD_LOCAL_APP_GIT_ENABLED", "COLLABMD_RCLONE_APP_GIT_ENABLED", "COLLABMD_GIT_APP_GIT_ENABLED", "COLLABMD_GIT_META_SYNC_ENABLED", "COLLABMD_GIT_META_SYNC_ONESHOT", "COLLABMD_GIT_TRACK_COLLABMD_COMMENTS", "COLLABMD_GIT_TRACK_COLLABMD_YJS", "COLLABMD_GIT_TRACK_COLLABMD_PULL_BACKUPS", "DOCKER_DEPLOY_CODE_ENABLED", "DOCKER_DEPLOY_CODE_POLL_ENABLED", "DOCKER_DEPLOY_CODE_AUTO_DEPLOY_ON_CHANGE", "DOCKER_DEPLOY_CODE_RUN_ON_START", "DOCKER_DEPLOY_CODE_REQUIRE_TOKEN", "DOCKER_DEPLOY_CODE_GIT_CLEAN", "DOCKER_DEPLOY_CODE_ZIP_STRIP_TOP_LEVEL", "DOCKER_DEPLOY_CODE_ZIP_DELETE_MISSING", "DOCKER_DEPLOY_CODE_ZIP_BACKUP_BEFORE_APPLY", "DOCKER_DEPLOY_CODE_ZIP_DEPLOY_AFTER_APPLY"]) {
+for (const key of ["ENABLE_DOZZLE", "ENABLE_FILEBROWSER", "ENABLE_WEBSSH", "ENABLE_TAILSCALE", "COLLABMD_LOCAL_ENABLED", "COLLABMD_RCLONE_ENABLED", "COLLABMD_RCLONE_RUNNER_ENABLED", "COLLABMD_GIT_DEPLOY_ENABLED", "COLLABMD_LOCAL_APP_GIT_ENABLED", "COLLABMD_RCLONE_APP_GIT_ENABLED", "COLLABMD_RCLONE_RUNNER_APP_GIT_ENABLED", "COLLABMD_GIT_APP_GIT_ENABLED", "COLLABMD_GIT_META_SYNC_ENABLED", "COLLABMD_GIT_META_SYNC_ONESHOT", "COLLABMD_RCLONE_RUNNER_INITIAL_PULL", "COLLABMD_RCLONE_RUNNER_PULL_REMOTE_CHANGES", "COLLABMD_RCLONE_RUNNER_DELETE_REMOTE", "COLLABMD_GIT_TRACK_COLLABMD_COMMENTS", "COLLABMD_GIT_TRACK_COLLABMD_YJS", "COLLABMD_GIT_TRACK_COLLABMD_PULL_BACKUPS", "DOCKER_DEPLOY_CODE_ENABLED", "DOCKER_DEPLOY_CODE_POLL_ENABLED", "DOCKER_DEPLOY_CODE_AUTO_DEPLOY_ON_CHANGE", "DOCKER_DEPLOY_CODE_RUN_ON_START", "DOCKER_DEPLOY_CODE_REQUIRE_TOKEN", "DOCKER_DEPLOY_CODE_GIT_CLEAN", "DOCKER_DEPLOY_CODE_ZIP_STRIP_TOP_LEVEL", "DOCKER_DEPLOY_CODE_ZIP_DELETE_MISSING", "DOCKER_DEPLOY_CODE_ZIP_BACKUP_BEFORE_APPLY", "DOCKER_DEPLOY_CODE_ZIP_DEPLOY_AFTER_APPLY"]) {
   const v = env[key];
   if (!v) {
     warnings.push(`${key} not set -> using default from scripts/compose`);
@@ -524,6 +549,9 @@ if (boolValue("COLLABMD_LOCAL_ENABLED", true)) {
 }
 if (boolValue("COLLABMD_RCLONE_ENABLED", false)) {
   ok.push(`subdomain preview: collabmd-rclone=${env.COLLABMD_RCLONE_CADDY_SITE || `http://collabmd-rclone.${domain}`}`);
+}
+if (boolValue("COLLABMD_RCLONE_RUNNER_ENABLED", false)) {
+  ok.push(`subdomain preview: collabmd-rclone-runner=${env.COLLABMD_RCLONE_RUNNER_CADDY_SITE || `http://collabmd-rclone-runner.${domain}`}`);
 }
 if (boolValue("COLLABMD_GIT_DEPLOY_ENABLED", false)) {
   ok.push(`subdomain preview: collabmd-git=${env.COLLABMD_GIT_CADDY_SITE || `http://collabmd-git.${domain}`}`);

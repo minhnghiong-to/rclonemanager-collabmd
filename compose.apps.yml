@@ -7,6 +7,7 @@
 #    COLLABMD_RCLONE_ENABLED=true      -> service: collabmd-rclone
 #    COLLABMD_GIT_DEPLOY_ENABLED=true  -> service: collabmd-git
 #    COLLABMD_GIT_META_SYNC_ENABLED=true -> service: collabmd-git-meta-sync
+#    COLLABMD_RCLONE_RUNNER_ENABLED=true -> service: collabmd-rclone-runner + sync/restart sidecars
 #
 #  Each mode has its own host directory, host port, and Caddy site.
 #  APP_PORT remains the source of truth for the in-container app port.
@@ -43,6 +44,12 @@ x-collabmd-common-env: &collabmd-common-env
   WS_ROOM_IDLE_GRACE_MS: "${COLLABMD_WS_ROOM_IDLE_GRACE_MS:-60000}"
   WS_MAX_BUFFERED_AMOUNT_BYTES: "${COLLABMD_WS_MAX_BUFFERED_AMOUNT_BYTES:-16777216}"
   WS_MAX_PAYLOAD_BYTES: "${COLLABMD_WS_MAX_PAYLOAD_BYTES:-16777216}"
+
+x-collabmd-rclone-env: &collabmd-rclone-env
+  COLLABMD_RCLONE_CONFIG_B64: "${COLLABMD_RCLONE_CONFIG_B64:-}"
+  COLLABMD_RCLONE_REMOTE: "${COLLABMD_RCLONE_REMOTE:-}"
+  COLLABMD_RCLONE_UMASK: "${COLLABMD_RCLONE_UMASK:-002}"
+  COLLABMD_RCLONE_LOG_LEVEL: "${COLLABMD_RCLONE_LOG_LEVEL:-INFO}"
 
 services:
   # ── CollabMD local folder mode ────────────────────────────────
@@ -218,6 +225,129 @@ services:
     networks: [app_net]
     restart: unless-stopped
 
+
+  # ── CollabMD runner-safe rclone mode ─────────────────────────
+  # Recommended for GitHub Actions/Azure Pipelines where FUSE mounts are
+  # fragile or unavailable. CollabMD reads/writes local disk for speed;
+  # the sidecar continuously copies changes to the rclone remote and the
+  # restarter recycles the app every 50 minutes by default.
+  collabmd-rclone-runner:
+    profiles: [collabmd-rclone-runner]
+    container_name: "collabmd-rclone-runner"
+    image: "${COLLABMD_IMAGE:-ghcr.io/andes90/collabmd:latest}"
+    env_file:
+      - ./.env
+    environment:
+      <<: *collabmd-common-env
+      AUTH_STRATEGY: "${COLLABMD_RCLONE_RUNNER_AUTH_STRATEGY:-${COLLABMD_RCLONE_AUTH_STRATEGY:-${COLLABMD_AUTH_STRATEGY:-none}}}"
+      AUTH_PASSWORD: "${COLLABMD_RCLONE_RUNNER_AUTH_PASSWORD:-${COLLABMD_RCLONE_AUTH_PASSWORD:-${COLLABMD_AUTH_PASSWORD:-}}}"
+      AUTH_SESSION_COOKIE_NAME: "${COLLABMD_RCLONE_RUNNER_AUTH_SESSION_COOKIE_NAME:-${COLLABMD_AUTH_SESSION_COOKIE_NAME:-collabmd_rclone_runner_auth}}"
+      PUBLIC_BASE_URL: "${COLLABMD_RCLONE_RUNNER_PUBLIC_BASE_URL:-${COLLABMD_PUBLIC_BASE_URL:-https://collabmd-rclone-runner.${DOMAIN}}}"
+      COLLABMD_VAULT_DIR: "${COLLABMD_RCLONE_RUNNER_CONTAINER_DIR:-/data}"
+      COLLABMD_GIT_ENABLED: "${COLLABMD_RCLONE_RUNNER_APP_GIT_ENABLED:-false}"
+      COLLABMD_GIT_REPO_URL: ""
+      COLLABMD_GIT_SSH_PRIVATE_KEY_FILE: ""
+      COLLABMD_GIT_SSH_PRIVATE_KEY_B64: ""
+      COLLABMD_GIT_SSH_KNOWN_HOSTS_FILE: ""
+      COLLABMD_GIT_USER_NAME: ""
+      COLLABMD_GIT_USER_EMAIL: ""
+    ports:
+      - "${COLLABMD_RCLONE_RUNNER_BIND_IP:-127.0.0.1}:${COLLABMD_RCLONE_RUNNER_HOST_PORT:-1237}:${APP_PORT:-1234}"
+    volumes:
+      - type: bind
+        source: ${COLLABMD_RCLONE_RUNNER_HOST_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/rclone-runner/vault}
+        target: ${COLLABMD_RCLONE_RUNNER_CONTAINER_DIR:-/data}
+    labels:
+      - "caddy=${COLLABMD_RCLONE_RUNNER_CADDY_SITE:-http://collabmd-rclone-runner.${DOMAIN}}"
+      - "caddy.reverse_proxy={{upstreams ${APP_PORT:-1234}}}"
+      - "caddy.basic_auth=/*"
+      - "caddy.basic_auth.${CADDY_AUTH_USER:-admin}=${CADDY_AUTH_HASH}"
+      - "caddy_1=${COLLABMD_RCLONE_RUNNER_TAILSCALE_SITE:-https://collabmd-rclone-runner.${TAILSCALE_TAILNET_DOMAIN:-tailnet.local}}"
+      - "caddy_1.tls=internal"
+      - "caddy_1.reverse_proxy={{upstreams ${APP_PORT:-1234}}}"
+      - "caddy_1.basic_auth=/*"
+      - "caddy_1.basic_auth.${CADDY_AUTH_USER:-admin}=${CADDY_AUTH_HASH}"
+    depends_on:
+      collabmd-rclone-runner-sync:
+        condition: service_healthy
+      collabmd-plantuml:
+        condition: service_started
+    networks: [app_net]
+    restart: unless-stopped
+    stop_grace_period: "${COLLABMD_RCLONE_RUNNER_STOP_GRACE_PERIOD:-30s}"
+    healthcheck:
+      test:
+        - "CMD"
+        - "sh"
+        - "-c"
+        - "wget -qO- http://localhost:${APP_PORT:-1234}${HEALTH_PATH:-/health} || exit 1"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  collabmd-rclone-runner-sync:
+    profiles: [collabmd-rclone-runner]
+    container_name: "collabmd-rclone-runner-sync"
+    image: rclone/rclone:latest
+    entrypoint: ["/bin/sh", "/usr/local/bin/collabmd-rclone-runner-sync.sh"]
+    environment:
+      <<: *collabmd-rclone-env
+      COLLABMD_RCLONE_RUNNER_SYNC_INTERVAL_SEC: "${COLLABMD_RCLONE_RUNNER_SYNC_INTERVAL_SEC:-20}"
+      COLLABMD_RCLONE_RUNNER_PULL_INTERVAL_SEC: "${COLLABMD_RCLONE_RUNNER_PULL_INTERVAL_SEC:-120}"
+      COLLABMD_RCLONE_RUNNER_INITIAL_PULL: "${COLLABMD_RCLONE_RUNNER_INITIAL_PULL:-true}"
+      COLLABMD_RCLONE_RUNNER_PULL_REMOTE_CHANGES: "${COLLABMD_RCLONE_RUNNER_PULL_REMOTE_CHANGES:-true}"
+      COLLABMD_RCLONE_RUNNER_DELETE_REMOTE: "${COLLABMD_RCLONE_RUNNER_DELETE_REMOTE:-false}"
+      COLLABMD_RCLONE_RUNNER_SYNC_EXTRA_ARGS: "${COLLABMD_RCLONE_RUNNER_SYNC_EXTRA_ARGS:---fast-list --metadata --transfers 8 --checkers 16}"
+    volumes:
+      - type: bind
+        source: ${COLLABMD_RCLONE_CONFIG_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/rclone/config}
+        target: /config
+      - type: bind
+        source: ${COLLABMD_RCLONE_RUNNER_HOST_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/rclone-runner/vault}
+        target: /data
+      - type: bind
+        source: ./docker-compose/scripts/collabmd-rclone-runner-sync.sh
+        target: /usr/local/bin/collabmd-rclone-runner-sync.sh
+        read_only: true
+    networks: [app_net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/collabmd-runner-sync-ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  collabmd-rclone-runner-restarter:
+    profiles: [collabmd-rclone-runner]
+    container_name: "collabmd-rclone-runner-restarter"
+    image: docker:27-cli
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      set -eu
+      interval="$${COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC:-3000}"
+      target="$${COLLABMD_RCLONE_RUNNER_RESTART_CONTAINER:-collabmd-rclone-runner}"
+      grace="$${COLLABMD_RCLONE_RUNNER_RESTART_TIMEOUT_SEC:-30}"
+      while :; do
+        sleep "$${interval}"
+        echo "Restarting $${target} after $${interval}s lifecycle."
+        docker restart -t "$${grace}" "$${target}"
+      done
+    environment:
+      COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC: "${COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC:-3000}"
+      COLLABMD_RCLONE_RUNNER_RESTART_CONTAINER: "${COLLABMD_RCLONE_RUNNER_RESTART_CONTAINER:-collabmd-rclone-runner}"
+      COLLABMD_RCLONE_RUNNER_RESTART_TIMEOUT_SEC: "${COLLABMD_RCLONE_RUNNER_RESTART_TIMEOUT_SEC:-30}"
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+    depends_on:
+      collabmd-rclone-runner:
+        condition: service_started
+    networks: [app_net]
+    restart: unless-stopped
+
   # ── CollabMD private git repo mode ────────────────────────────
   collabmd-git:
     profiles: [collabmd-git]
@@ -314,7 +444,7 @@ services:
 
   # ── Shared private PlantUML renderer for enabled CollabMD apps ─
   collabmd-plantuml:
-    profiles: [collabmd-local, collabmd-rclone, collabmd-git]
+    profiles: [collabmd-local, collabmd-rclone, collabmd-rclone-runner, collabmd-git]
     container_name: "collabmd-plantuml"
     image: plantuml/plantuml-server:jetty
     ports:

@@ -6,6 +6,7 @@ Template triển khai nhanh 1 ứng dụng container (app chính) kèm đầy đ
 - **Ops**: Dozzle, Filebrowser, WebSSH (có thể truy cập qua domain hoặc Tailscale hostname:port).
 - **Access**: Tailscale + Keep-IP workflow.
 - **Deploy Code**: sidecar self-deploy/app-control, mặc định tắt và chỉ bật khi `DOCKER_DEPLOY_CODE_ENABLED=true`.
+- **CollabMD rclone runner-safe**: mode disk-local + rclone sync sidecar cho GitHub Actions/Azure Pipelines, bật bằng `COLLABMD_RCLONE_RUNNER_ENABLED=true` và restart app mặc định mỗi 50 phút.
 
 Tài liệu chính đã được chuẩn hoá theo codebase hiện tại:
 
