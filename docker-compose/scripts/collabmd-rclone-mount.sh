@@ -62,6 +62,12 @@ if [ ! -c /dev/fuse ]; then
   fail "/dev/fuse exists but is not a character device. Check Docker device mapping: /dev/fuse:/dev/fuse."
 fi
 
+ALLOW_NON_EMPTY="${COLLABMD_RCLONE_ALLOW_NON_EMPTY:-true}"
+case "$ALLOW_NON_EMPTY" in
+  true|false) ;;
+  *) fail "COLLABMD_RCLONE_ALLOW_NON_EMPTY must be true or false." ;;
+esac
+
 log "✅ collabmd-rclone-mount: mounting ${COLLABMD_RCLONE_REMOTE} at /data"
 
 set -- rclone mount "${COLLABMD_RCLONE_REMOTE}" /data \
@@ -73,6 +79,13 @@ set -- rclone mount "${COLLABMD_RCLONE_REMOTE}" /data \
   --poll-interval "${COLLABMD_RCLONE_POLL_INTERVAL:-1m}" \
   --umask "${COLLABMD_RCLONE_UMASK:-002}" \
   --log-level "${COLLABMD_RCLONE_LOG_LEVEL:-INFO}"
+
+if [ "$ALLOW_NON_EMPTY" = "true" ]; then
+  # /data is a Docker bind mount so rclone sees it as an existing mount point.
+  # Allow mounting over that shared target so the FUSE mount propagates back to
+  # the host directory consumed by the app container.
+  set -- "$@" --allow-non-empty
+fi
 
 # Intentionally allow word splitting so COLLABMD_RCLONE_EXTRA_ARGS can contain
 # multiple rclone CLI flags, matching the prior compose behavior.

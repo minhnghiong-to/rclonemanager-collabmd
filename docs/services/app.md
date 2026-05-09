@@ -41,6 +41,7 @@
   - đặt toàn bộ file config dạng base64 vào `COLLABMD_RCLONE_CONFIG_B64`.
 - Host mount dir: `COLLABMD_RCLONE_HOST_DIR`.
 - Cache dir: `COLLABMD_RCLONE_CACHE_DIR`.
+- `COLLABMD_RCLONE_ALLOW_NON_EMPTY=true` (mặc định): thêm `--allow-non-empty` để rclone có thể mount lên `/data`, vốn là Docker bind mount dùng `rshared`. Đặt `false` chỉ khi bạn tự truyền mount target khác qua custom args và muốn rclone từ chối thư mục non-empty/already-mounted.
 - Direct host port: `COLLABMD_RCLONE_HOST_PORT`.
 - Public Caddy site: `COLLABMD_RCLONE_CADDY_SITE`.
 
@@ -48,7 +49,7 @@ Rclone mount cần host/container hỗ trợ FUSE (`/dev/fuse`, `SYS_ADMIN`, bin
 
 1. `COLLABMD_RCLONE_CONFIG_B64` phải là nội dung `rclone.conf` đã base64 một dòng, ví dụ `base64 -w0 rclone.conf`; không dùng placeholder như `xxxxx` và không để newline.
 2. `COLLABMD_RCLONE_REMOTE` phải trùng đúng tên remote trong file config, ví dụ nếu remote là `[gd-o861_pm2_io]` thì dùng `gd-o861_pm2_io:collabmd-vault`.
-3. Host phải cho phép FUSE: compose cần map `/dev/fuse`, cấp `SYS_ADMIN`, và thư mục bind mount phải dùng propagation `rshared`. Nhiều môi trường CI/managed container không cho phép điều này; khi đó hãy tắt mount mode và bật runner-safe mode:
+3. Host phải cho phép FUSE: compose cần map `/dev/fuse`, cấp `SYS_ADMIN`, thư mục bind mount phải dùng propagation `rshared`, và mount sidecar mặc định bật `COLLABMD_RCLONE_ALLOW_NON_EMPTY=true` để rclone mount chồng lên `/data` (Docker bind mount). Nhiều môi trường CI/managed container không cho phép điều này; khi đó hãy tắt mount mode và bật runner-safe mode:
 
 ```env
 COLLABMD_RCLONE_ENABLED=false
