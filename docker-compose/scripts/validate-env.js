@@ -402,6 +402,9 @@ if (boolValue("COLLABMD_RCLONE_ENABLED", false) || boolValue("COLLABMD_RCLONE_RU
   checkOptional("COLLABMD_RCLONE_CONFIG_DIR", "directory containing rclone.conf");
   checkOptional("COLLABMD_RCLONE_CONFIG_B64", "base64-encoded rclone.conf", validateRcloneConfigBase64);
   checkOptional("COLLABMD_RCLONE_VFS_CACHE_MODE", "rclone vfs cache mode");
+  checkOptional("COLLABMD_RCLONE_ALLOW_NON_EMPTY", "allow rclone to mount over the shared /data bind mount", (v) => {
+    return ["true", "false"].includes(v) ? null : "must be true or false";
+  });
   checkOptional("COLLABMD_RCLONE_EXTRA_ARGS", "extra rclone mount args");
 
   if (!env.COLLABMD_RCLONE_CONFIG_B64) {
