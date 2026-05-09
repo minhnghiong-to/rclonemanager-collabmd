@@ -5,21 +5,44 @@
 # upload before the container exits.
 set -eu
 
-mkdir -p /config /data
+log() {
+  printf '%s\n' "$*" >&2
+}
 
-if [ -n "${COLLABMD_RCLONE_CONFIG_B64:-}" ]; then
-  printf '%s' "${COLLABMD_RCLONE_CONFIG_B64}" | base64 -d > /config/rclone.conf
+fail() {
+  log "❌ collabmd-rclone-runner-sync: $*"
+  exit 1
+}
+
+write_config_from_env() {
+  if [ -z "${COLLABMD_RCLONE_CONFIG_B64:-}" ]; then
+    return 0
+  fi
+
+  tmp_config="/config/rclone.conf.tmp.$$"
+  if ! printf '%s' "${COLLABMD_RCLONE_CONFIG_B64}" | base64 -d > "$tmp_config"; then
+    rm -f "$tmp_config"
+    fail "COLLABMD_RCLONE_CONFIG_B64 is not valid base64. Generate it with: base64 -w0 rclone.conf"
+  fi
+
+  if [ ! -s "$tmp_config" ]; then
+    rm -f "$tmp_config"
+    fail "COLLABMD_RCLONE_CONFIG_B64 decoded to an empty rclone.conf."
+  fi
+
+  mv "$tmp_config" /config/rclone.conf
   chmod 600 /config/rclone.conf
-fi
+}
+
+mkdir -p /config /data
+write_config_from_env
 
 if [ ! -s /config/rclone.conf ]; then
-  echo "COLLABMD_RCLONE_CONFIG_B64 or /config/rclone.conf is required." >&2
-  exit 1
+  fail "COLLABMD_RCLONE_CONFIG_B64 or /config/rclone.conf is required."
 fi
 
 if [ -z "${COLLABMD_RCLONE_REMOTE:-}" ]; then
-  echo "COLLABMD_RCLONE_REMOTE is required." >&2
-  exit 1
+  fail "COLLABMD_RCLONE_REMOTE is required. Example: gdrive:notes/collabmd"
 fi
 
 SYNC_INTERVAL="${COLLABMD_RCLONE_RUNNER_SYNC_INTERVAL_SEC:-20}"

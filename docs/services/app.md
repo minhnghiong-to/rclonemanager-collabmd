@@ -44,7 +44,20 @@
 - Direct host port: `COLLABMD_RCLONE_HOST_PORT`.
 - Public Caddy site: `COLLABMD_RCLONE_CADDY_SITE`.
 
-Rclone mount cần host/container hỗ trợ FUSE (`/dev/fuse`, `SYS_ADMIN`, bind propagation `rshared`).
+Rclone mount cần host/container hỗ trợ FUSE (`/dev/fuse`, `SYS_ADMIN`, bind propagation `rshared`). Nếu log container chỉ hiện các biến như `XDG_CONFIG_HOME=/config`, `BB_ASH_VERSION`, `COLLABMD_RCLONE_*` rồi `Container stopped`, hãy kiểm tra theo thứ tự:
+
+1. `COLLABMD_RCLONE_CONFIG_B64` phải là nội dung `rclone.conf` đã base64 một dòng, ví dụ `base64 -w0 rclone.conf`; không dùng placeholder như `xxxxx` và không để newline.
+2. `COLLABMD_RCLONE_REMOTE` phải trùng đúng tên remote trong file config, ví dụ nếu remote là `[gd-o861_pm2_io]` thì dùng `gd-o861_pm2_io:collabmd-vault`.
+3. Host phải cho phép FUSE: compose cần map `/dev/fuse`, cấp `SYS_ADMIN`, và thư mục bind mount phải dùng propagation `rshared`. Nhiều môi trường CI/managed container không cho phép điều này; khi đó hãy tắt mount mode và bật runner-safe mode:
+
+```env
+COLLABMD_RCLONE_ENABLED=false
+COLLABMD_RCLONE_RUNNER_ENABLED=true
+COLLABMD_RCLONE_REMOTE=gd-o861_pm2_io:collabmd-vault
+COLLABMD_RCLONE_CONFIG_B64=<base64-rclone.conf>
+```
+
+Container `collabmd-rclone-mount` hiện chạy script preflight riêng để báo lỗi rõ hơn khi config base64 sai, remote không tồn tại trong `rclone.conf`, hoặc `/dev/fuse` không khả dụng.
 
 ## Rclone runner-safe mode cho GitHub Actions/Azure Pipelines
 - Services: `collabmd-rclone-runner`, `collabmd-rclone-runner-sync`.

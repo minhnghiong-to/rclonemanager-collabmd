@@ -169,32 +169,7 @@ services:
     profiles: [collabmd-rclone]
     container_name: "collabmd-rclone-mount"
     image: rclone/rclone:latest
-    entrypoint: ["/bin/sh", "-c"]
-    command: |
-      set -eu
-      mkdir -p /config /data /cache
-      if [ -n "$${COLLABMD_RCLONE_CONFIG_B64:-}" ]; then
-        printf '%s' "$${COLLABMD_RCLONE_CONFIG_B64}" | base64 -d > /config/rclone.conf
-        chmod 600 /config/rclone.conf
-      fi
-      if [ ! -s /config/rclone.conf ]; then
-        echo "COLLABMD_RCLONE_CONFIG_B64 or /config/rclone.conf is required." >&2
-        exit 1
-      fi
-      if [ -z "$${COLLABMD_RCLONE_REMOTE:-}" ]; then
-        echo "COLLABMD_RCLONE_REMOTE is required." >&2
-        exit 1
-      fi
-      exec rclone mount "$${COLLABMD_RCLONE_REMOTE}" /data \
-        --config /config/rclone.conf \
-        --allow-other \
-        --vfs-cache-mode "$${COLLABMD_RCLONE_VFS_CACHE_MODE:-writes}" \
-        --cache-dir /cache \
-        --dir-cache-time "$${COLLABMD_RCLONE_DIR_CACHE_TIME:-1m}" \
-        --poll-interval "$${COLLABMD_RCLONE_POLL_INTERVAL:-1m}" \
-        --umask "$${COLLABMD_RCLONE_UMASK:-002}" \
-        --log-level "$${COLLABMD_RCLONE_LOG_LEVEL:-INFO}" \
-        $${COLLABMD_RCLONE_EXTRA_ARGS:-}
+    entrypoint: ["/bin/sh", "/usr/local/bin/collabmd-rclone-mount"]
     environment:
       COLLABMD_RCLONE_CONFIG_B64: "${COLLABMD_RCLONE_CONFIG_B64:-}"
       COLLABMD_RCLONE_REMOTE: "${COLLABMD_RCLONE_REMOTE:-}"
@@ -214,6 +189,10 @@ services:
       - type: bind
         source: ${COLLABMD_RCLONE_CONFIG_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/rclone/config}
         target: /config
+      - type: bind
+        source: ./docker-compose/scripts/collabmd-rclone-mount.sh
+        target: /usr/local/bin/collabmd-rclone-mount
+        read_only: true
       - type: bind
         source: ${COLLABMD_RCLONE_HOST_DIR:-${DOCKER_VOLUMES_ROOT:-./.docker-volumes}/collabmd/rclone/vault}
         target: /data

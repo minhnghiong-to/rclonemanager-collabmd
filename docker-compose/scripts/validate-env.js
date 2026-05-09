@@ -85,6 +85,23 @@ function validatePrivateKeyBase64(v) {
   return null;
 }
 
+function validateRcloneConfigBase64(v) {
+  if (isPlaceholder(v)) return "replace the placeholder with a real base64-encoded rclone.conf";
+  if (/\s/.test(v)) return "must be base64 without whitespace/newlines; generate with: base64 -w0 rclone.conf";
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(v) || v.length % 4 === 1) return "must be valid base64; generate with: base64 -w0 rclone.conf";
+
+  let decoded = "";
+  try {
+    decoded = Buffer.from(v, "base64").toString("utf8");
+  } catch {
+    return "must be valid base64";
+  }
+
+  if (!decoded.trim()) return "decoded rclone.conf is empty";
+  if (!/^\s*\[[^\]]+\]/m.test(decoded)) return "decoded value does not look like rclone.conf (missing [remote] section)";
+  return null;
+}
+
 function checkPort(key, required = true) {
   const v = env[key];
   if (!v) {
@@ -383,7 +400,7 @@ if (env.COLLABMD_PORT && env.APP_PORT && env.COLLABMD_PORT !== env.APP_PORT) {
 if (boolValue("COLLABMD_RCLONE_ENABLED", false) || boolValue("COLLABMD_RCLONE_RUNNER_ENABLED", false)) {
   checkRequired("COLLABMD_RCLONE_REMOTE", "rclone remote:path for CollabMD rclone modes");
   checkOptional("COLLABMD_RCLONE_CONFIG_DIR", "directory containing rclone.conf");
-  checkOptional("COLLABMD_RCLONE_CONFIG_B64", "base64-encoded rclone.conf");
+  checkOptional("COLLABMD_RCLONE_CONFIG_B64", "base64-encoded rclone.conf", validateRcloneConfigBase64);
   checkOptional("COLLABMD_RCLONE_VFS_CACHE_MODE", "rclone vfs cache mode");
   checkOptional("COLLABMD_RCLONE_EXTRA_ARGS", "extra rclone mount args");
 
