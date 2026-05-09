@@ -47,7 +47,7 @@
 Rclone mount cần host/container hỗ trợ FUSE (`/dev/fuse`, `SYS_ADMIN`, bind propagation `rshared`).
 
 ## Rclone runner-safe mode cho GitHub Actions/Azure Pipelines
-- Services: `collabmd-rclone-runner`, `collabmd-rclone-runner-sync`, `collabmd-rclone-runner-restarter`.
+- Services: `collabmd-rclone-runner`, `collabmd-rclone-runner-sync`.
 - Mục tiêu: tránh FUSE/`SYS_ADMIN` trên runner CI, giữ hiệu năng cao bằng cách cho CollabMD ghi vào disk local (`COLLABMD_RCLONE_RUNNER_HOST_DIR`) rồi sidecar `rclone copy/sync` lên remote.
 - Dùng chung `COLLABMD_RCLONE_REMOTE`, `COLLABMD_RCLONE_CONFIG_DIR` hoặc `COLLABMD_RCLONE_CONFIG_B64` với rclone mount mode.
 - `COLLABMD_RCLONE_RUNNER_INITIAL_PULL=true`: kéo dữ liệu remote về local trước, giúp runner mới không bắt đầu từ thư mục rỗng.
@@ -55,8 +55,8 @@ Rclone mount cần host/container hỗ trợ FUSE (`/dev/fuse`, `SYS_ADMIN`, bin
 - `COLLABMD_RCLONE_RUNNER_PULL_REMOTE_CHANGES=true` + `COLLABMD_RCLONE_RUNNER_PULL_INTERVAL_SEC=120`: định kỳ kéo thay đổi từ remote nếu có nguồn khác cùng ghi.
 - `COLLABMD_RCLONE_RUNNER_DELETE_REMOTE=false` là mặc định an toàn nhất: sidecar dùng `rclone copy`, không xóa file remote khi local thiếu file. Chỉ đặt `true` khi runner này là nguồn dữ liệu duy nhất và bạn muốn mirror chính xác bằng `rclone sync`; khi đó file bị xóa sẽ được đưa vào `.collabmd-runner-backups/<timestamp>` trên remote trước.
 - `COLLABMD_RCLONE_RUNNER_SYNC_EXTRA_ARGS=--fast-list --metadata --transfers 8 --checkers 16` cân bằng hiệu năng và metadata. Có thể tăng `transfers/checkers` nếu remote chịu tải tốt.
-- `COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC=3000`: sidecar Docker CLI restart app mỗi 3000 giây = 50 phút. Sync sidecar vẫn chạy riêng, nên dữ liệu vẫn được upload trong khi app được recycle.
-- Restarter cần mount `/var/run/docker.sock`; chỉ nên bật mode này trong runner/pipeline tin cậy, không expose cho người dùng không tin cậy.
+- Không có sidecar restart/Docker socket: GitHub Actions/Azure Pipelines tự recycle/restart runner theo lifecycle của job. Mode này chỉ tập trung giảm RPO bằng sync ngắn, initial pull, final upload khi container nhận SIGTERM, và backup trước khi overwrite remote.
+- `COLLABMD_RCLONE_RUNNER_BACKUP_DIR` tùy chọn root backup remote; nếu bỏ trống, sidecar tự suy ra thư mục backup không overlap cạnh path đích, ví dụ `gdrive:notes/collabmd` -> `gdrive:notes/.collabmd-runner-backups/collabmd/<timestamp>`. Nếu remote là root như `gdrive:`, hãy đặt biến này thủ công để tránh backup overlap.
 
 Ví dụ tối thiểu cho runner:
 
@@ -67,7 +67,6 @@ COLLABMD_RCLONE_RUNNER_ENABLED=true
 COLLABMD_RCLONE_REMOTE=gdrive:notes/collabmd
 COLLABMD_RCLONE_CONFIG_B64=<base64-rclone.conf>
 COLLABMD_RCLONE_RUNNER_SYNC_INTERVAL_SEC=20
-COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC=3000
 ```
 
 ## Git private repo mode

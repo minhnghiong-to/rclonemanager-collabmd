@@ -7,7 +7,7 @@
 #    COLLABMD_RCLONE_ENABLED=true      -> service: collabmd-rclone
 #    COLLABMD_GIT_DEPLOY_ENABLED=true  -> service: collabmd-git
 #    COLLABMD_GIT_META_SYNC_ENABLED=true -> service: collabmd-git-meta-sync
-#    COLLABMD_RCLONE_RUNNER_ENABLED=true -> service: collabmd-rclone-runner + sync/restart sidecars
+#    COLLABMD_RCLONE_RUNNER_ENABLED=true -> service: collabmd-rclone-runner + rclone sync sidecar
 #
 #  Each mode has its own host directory, host port, and Caddy site.
 #  APP_PORT remains the source of truth for the in-container app port.
@@ -229,8 +229,8 @@ services:
   # ── CollabMD runner-safe rclone mode ─────────────────────────
   # Recommended for GitHub Actions/Azure Pipelines where FUSE mounts are
   # fragile or unavailable. CollabMD reads/writes local disk for speed;
-  # the sidecar continuously copies changes to the rclone remote and the
-  # restarter recycles the app every 50 minutes by default.
+  # the sidecar continuously copies changes to the rclone remote so data
+  # survives the CI runner's own recycle/restart lifecycle.
   collabmd-rclone-runner:
     profiles: [collabmd-rclone-runner]
     container_name: "collabmd-rclone-runner"
@@ -298,6 +298,7 @@ services:
       COLLABMD_RCLONE_RUNNER_INITIAL_PULL: "${COLLABMD_RCLONE_RUNNER_INITIAL_PULL:-true}"
       COLLABMD_RCLONE_RUNNER_PULL_REMOTE_CHANGES: "${COLLABMD_RCLONE_RUNNER_PULL_REMOTE_CHANGES:-true}"
       COLLABMD_RCLONE_RUNNER_DELETE_REMOTE: "${COLLABMD_RCLONE_RUNNER_DELETE_REMOTE:-false}"
+      COLLABMD_RCLONE_RUNNER_BACKUP_DIR: "${COLLABMD_RCLONE_RUNNER_BACKUP_DIR:-}"
       COLLABMD_RCLONE_RUNNER_SYNC_EXTRA_ARGS: "${COLLABMD_RCLONE_RUNNER_SYNC_EXTRA_ARGS:---fast-list --metadata --transfers 8 --checkers 16}"
     volumes:
       - type: bind
@@ -319,34 +320,6 @@ services:
       retries: 12
       start_period: 5s
 
-  collabmd-rclone-runner-restarter:
-    profiles: [collabmd-rclone-runner]
-    container_name: "collabmd-rclone-runner-restarter"
-    image: docker:27-cli
-    entrypoint: ["/bin/sh", "-c"]
-    command: |
-      set -eu
-      interval="$${COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC:-3000}"
-      target="$${COLLABMD_RCLONE_RUNNER_RESTART_CONTAINER:-collabmd-rclone-runner}"
-      grace="$${COLLABMD_RCLONE_RUNNER_RESTART_TIMEOUT_SEC:-30}"
-      while :; do
-        sleep "$${interval}"
-        echo "Restarting $${target} after $${interval}s lifecycle."
-        docker restart -t "$${grace}" "$${target}"
-      done
-    environment:
-      COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC: "${COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC:-3000}"
-      COLLABMD_RCLONE_RUNNER_RESTART_CONTAINER: "${COLLABMD_RCLONE_RUNNER_RESTART_CONTAINER:-collabmd-rclone-runner}"
-      COLLABMD_RCLONE_RUNNER_RESTART_TIMEOUT_SEC: "${COLLABMD_RCLONE_RUNNER_RESTART_TIMEOUT_SEC:-30}"
-    volumes:
-      - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
-    depends_on:
-      collabmd-rclone-runner:
-        condition: service_started
-    networks: [app_net]
-    restart: unless-stopped
 
   # ── CollabMD private git repo mode ────────────────────────────
   collabmd-git:

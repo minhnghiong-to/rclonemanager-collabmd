@@ -35,15 +35,60 @@ copy_remote_to_local() {
   $RCLONE copy "$REMOTE" /data $SYNC_EXTRA_ARGS
 }
 
-push_local_to_remote() {
-  if [ "${COLLABMD_RCLONE_RUNNER_DELETE_REMOTE:-false}" = "true" ]; then
-    echo "Syncing /data to ${REMOTE} with remote delete enabled ..."
-    # shellcheck disable=SC2086
-    $RCLONE sync /data "$REMOTE" --backup-dir "${REMOTE%/}/.collabmd-runner-backups/$(date -u +%Y%m%dT%H%M%SZ)" $SYNC_EXTRA_ARGS
+default_backup_root() {
+  remote_name="${REMOTE%%:*}"
+  remote_path="${REMOTE#*:}"
+
+  # A root destination like "drive:" has no non-overlapping same-remote
+  # backup location that rclone can safely infer. Users can still set
+  # COLLABMD_RCLONE_RUNNER_BACKUP_DIR explicitly for that layout.
+  if [ "$remote_path" = "$REMOTE" ] || [ -z "$remote_path" ]; then
+    return 0
+  fi
+
+  parent="${remote_path%/*}"
+  base="${remote_path##*/}"
+  if [ "$parent" = "$remote_path" ]; then
+    printf '%s:.collabmd-runner-backups/%s' "$remote_name" "$base"
   else
-    echo "Copying /data to ${REMOTE} without deleting remote files ..."
-    # shellcheck disable=SC2086
-    $RCLONE copy /data "$REMOTE" $SYNC_EXTRA_ARGS
+    printf '%s:%s/.collabmd-runner-backups/%s' "$remote_name" "$parent" "$base"
+  fi
+}
+
+backup_dir_for_push() {
+  if [ -n "${COLLABMD_RCLONE_RUNNER_BACKUP_DIR:-}" ]; then
+    printf '%s/%s' "${COLLABMD_RCLONE_RUNNER_BACKUP_DIR%/}" "$(date -u +%Y%m%dT%H%M%SZ)"
+    return 0
+  fi
+
+  backup_root="$(default_backup_root)"
+  if [ -n "$backup_root" ]; then
+    printf '%s/%s' "$backup_root" "$(date -u +%Y%m%dT%H%M%SZ)"
+  fi
+}
+
+push_local_to_remote() {
+  backup_dir="$(backup_dir_for_push)"
+  if [ "${COLLABMD_RCLONE_RUNNER_DELETE_REMOTE:-false}" = "true" ]; then
+    if [ -n "$backup_dir" ]; then
+      echo "Syncing /data to ${REMOTE} with remote delete enabled; changed remote files backup to ${backup_dir} ..."
+      # shellcheck disable=SC2086
+      $RCLONE sync /data "$REMOTE" --backup-dir "$backup_dir" $SYNC_EXTRA_ARGS
+    else
+      echo "Syncing /data to ${REMOTE} with remote delete enabled; no safe non-overlapping backup dir inferred ..."
+      # shellcheck disable=SC2086
+      $RCLONE sync /data "$REMOTE" $SYNC_EXTRA_ARGS
+    fi
+  else
+    if [ -n "$backup_dir" ]; then
+      echo "Copying /data to ${REMOTE} without deleting remote files; overwritten remote files backup to ${backup_dir} ..."
+      # shellcheck disable=SC2086
+      $RCLONE copy /data "$REMOTE" --backup-dir "$backup_dir" $SYNC_EXTRA_ARGS
+    else
+      echo "Copying /data to ${REMOTE} without deleting remote files; no safe non-overlapping backup dir inferred ..."
+      # shellcheck disable=SC2086
+      $RCLONE copy /data "$REMOTE" $SYNC_EXTRA_ARGS
+    fi
   fi
 }
 

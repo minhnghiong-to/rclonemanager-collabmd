@@ -407,10 +407,7 @@ if (boolValue("COLLABMD_RCLONE_RUNNER_ENABLED", false)) {
     const n = Number(v);
     return Number.isInteger(n) && n >= 30 ? null : "must be integer >= 30";
   });
-  checkOptional("COLLABMD_RCLONE_RUNNER_RESTART_INTERVAL_SEC", "app restart interval seconds; 3000 = 50 minutes", (v) => {
-    const n = Number(v);
-    return Number.isInteger(n) && n >= 60 ? null : "must be integer >= 60";
-  });
+  checkOptional("COLLABMD_RCLONE_RUNNER_BACKUP_DIR", "optional remote backup dir for overwritten files");
   checkOptional("COLLABMD_RCLONE_RUNNER_SYNC_EXTRA_ARGS", "extra rclone copy/sync args for runner-safe mode");
 }
 
